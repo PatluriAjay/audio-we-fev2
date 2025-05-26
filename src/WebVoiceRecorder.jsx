@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { FFmpeg } from '@ffmpeg/ffmpeg'; // Import FFmpeg
-import { fetchFile } from '@ffmpeg/util'; // Helper to fetch files for FFmpeg
+import React, { useState, useRef, useEffect } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg"; // Import FFmpeg
+import { fetchFile } from "@ffmpeg/util"; // Helper to fetch files for FFmpeg
 
 const WebVoiceRecorder = ({ onRecordingComplete }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -8,8 +8,8 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
-  const [audioUrl, setAudioUrl] = useState('');
-  const [error, setError] = useState('');
+  const [audioUrl, setAudioUrl] = useState("");
+  const [error, setError] = useState("");
   const [isConverting, setIsConverting] = useState(false); // New state for conversion status
 
   const mediaRecorderRef = useRef(null);
@@ -22,21 +22,22 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
 
   // --- FFmpeg setup ---
   const loadFFmpeg = async () => {
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'; // Use a CDN for core files
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm"; // Use a CDN for core files
     try {
-      if (!ffmpegRef.current.loaded) { // Check if FFmpeg is already loaded
-        setError('Loading converter...');
+      if (!ffmpegRef.current.loaded) {
+        // Check if FFmpeg is already loaded
+        setError("Loading converter...");
         await ffmpegRef.current.load({
           coreURL: `${baseURL}/ffmpeg-core.js`,
           wasmURL: `${baseURL}/ffmpeg-core.wasm`,
           // For web workers: workerURL: `${baseURL}/ffmpeg-core.worker.js`,
         });
-        setError(''); // Clear error once loaded
-        console.log('FFmpeg loaded successfully');
+        setError(""); // Clear error once loaded
+        console.log("FFmpeg loaded successfully");
       }
     } catch (err) {
-      console.error('Failed to load FFmpeg:', err);
-      setError('Failed to load audio converter. Please try again.');
+      console.error("Failed to load FFmpeg:", err);
+      setError("Failed to load audio converter. Please try again.");
     }
   };
 
@@ -47,7 +48,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
@@ -60,12 +61,12 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
   // Check browser support
   const checkSupport = () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setError('Your browser does not support audio recording.');
+      setError("Your browser does not support audio recording.");
       return false;
     }
 
     if (!window.MediaRecorder) {
-      setError('MediaRecorder is not supported in your browser.');
+      setError("MediaRecorder is not supported in your browser.");
       return false;
     }
 
@@ -76,34 +77,38 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
   const getSupportedMimeType = () => {
     // Prefer Opus directly if the browser supports it, otherwise fallback
     const possibleTypes = [
-      'audio/webm;codecs=opus',      // WebM with Opus (ideal for direct recording)
-      'audio/mp4;codecs=mp4a.40.2', // AAC in MP4
-      'audio/webm',                  // WebM fallback
-      'audio/mp4',                   // MP4 fallback
-      'audio/aac',                   // Raw AAC
+      "audio/mp4;codecs=mp4a.40.2",
+      "audio/webm;codecs=opus", // WebM with Opus (ideal for direct recording)
+      "audio/mp4;codecs=mp4a.40.2", // AAC in MP4
+      "audio/webm", // WebM fallback
+      "audio/mp4", // MP4 fallback
+      "audio/aac", // Raw AAC
     ];
 
     for (const mimeType of possibleTypes) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
-        console.log('Using initial MediaRecorder MIME type:', mimeType);
+        console.log("Using initial MediaRecorder MIME type:", mimeType);
         return mimeType;
       }
     }
 
-    console.warn('No preferred MIME type supported for initial recording, using default.');
-    return ''; // Let browser choose (often WebM or MP4)
+    console.warn(
+      "No preferred MIME type supported for initial recording, using default."
+    );
+    return ""; // Let browser choose (often WebM or MP4)
   };
 
   // Start recording
   const startRecording = async () => {
     if (!checkSupport()) return;
-    if (!ffmpegRef.current.loaded) { // Ensure FFmpeg is loaded before starting
-      setError('Audio converter is not loaded yet. Please wait.');
+    if (!ffmpegRef.current.loaded) {
+      // Ensure FFmpeg is loaded before starting
+      setError("Audio converter is not loaded yet. Please wait.");
       return;
     }
 
     try {
-      setError('');
+      setError("");
 
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -111,8 +116,8 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 48000, // Common for Opus, better quality
-          channelCount: 1,    // Mono for smaller file size
-        }
+          channelCount: 1, // Mono for smaller file size
+        },
       });
 
       streamRef.current = stream;
@@ -130,54 +135,70 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
         }
       };
 
-      mediaRecorderRef.current.onstop = async () => { // Made async for conversion
-        const initialBlob = new Blob(chunksRef.current, { type: mediaRecorderRef.current.mimeType });
+      mediaRecorderRef.current.onstop = async () => {
+        // Made async for conversion
+        const initialBlob = new Blob(chunksRef.current, {
+          type: mediaRecorderRef.current.mimeType,
+        });
         setAudioBlob(initialBlob); // Set initial blob for info display
 
         // Stop all tracks
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current.getTracks().forEach((track) => track.stop());
         }
 
         setIsConverting(true); // Indicate conversion is starting
-        setError('Converting audio to OPUS...');
+        setError("Converting audio to OPUS...");
 
         try {
           // Write the initial recording to FFmpeg's virtual file system
-          await ffmpegRef.current.writeFile('input.file', await fetchFile(initialBlob));
+          await ffmpegRef.current.writeFile(
+            "input.file",
+            await fetchFile(initialBlob)
+          );
 
           // Run FFmpeg command to convert to Opus
           // -i input.file: input file
           // -c:a libopus: use the Opus audio codec
           // -b:a 64k: audio bitrate (adjust as needed, 64k is good for voice)
           // output.opus: output file name
-          await ffmpegRef.current.exec(['-i', 'input.file', '-c:a', 'libopus', '-b:a', '64k', 'output.opus']);
+          await ffmpegRef.current.exec([
+            "-i",
+            "input.file",
+            "-c:a",
+            "aac", // Use AAC codec
+            "-b:a",
+            "128k", // Higher bitrate for better quality
+            "-movflags",
+            "+faststart", // Optimize for web playback
+            "output.m4a", // M4A output
+          ]);
 
           // Read the converted Opus file
-          const data = await ffmpegRef.current.readFile('output.opus');
-          const opusBlob = new Blob([data.buffer], { type: 'audio/opus' });
-          setAudioBlob(opusBlob); // Update state with the OPUS blob
+          const data = await ffmpegRef.current.readFile("output.m4a");
+          const m4aBlob = new Blob([data.buffer], { type: "audio/mp4" });
+          setAudioBlob(m4aBlob); // Update state with the OPUS blob
 
           // Create URL for playback
-          const url = URL.createObjectURL(opusBlob);
+          const url = URL.createObjectURL(m4aBlob);
           setAudioUrl(url);
 
           // Call callback with the OPUS blob for upload
           if (onRecordingComplete) {
-            onRecordingComplete(opusBlob, url);
+            onRecordingComplete(m4aBlob, url);
           }
-          setError(''); // Clear conversion message
+          setError(""); // Clear conversion message
         } catch (convertError) {
-          console.error('Failed to convert to OPUS:', convertError);
-          setError('Failed to convert audio to OPUS: ' + convertError.message);
+          console.error("Failed to convert to OPUS:", convertError);
+          setError("Failed to convert audio to OPUS: " + convertError.message);
         } finally {
           setIsConverting(false); // Conversion finished
         }
       };
 
       mediaRecorderRef.current.onerror = (event) => {
-        console.error('MediaRecorder error:', event.error);
-        setError('Recording failed: ' + event.error.message);
+        console.error("MediaRecorder error:", event.error);
+        setError("Recording failed: " + event.error.message);
       };
 
       // Start recording
@@ -187,13 +208,16 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
 
       // Start timer
       timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        setRecordingTime((prev) => prev + 1);
       }, 1000);
 
-      console.log('Recording started with MIME type:', mediaRecorderRef.current.mimeType);
+      console.log(
+        "Recording started with MIME type:",
+        mediaRecorderRef.current.mimeType
+      );
     } catch (error) {
-      console.error('Failed to start recording:', error);
-      setError('Failed to start recording: ' + error.message);
+      console.error("Failed to start recording:", error);
+      setError("Failed to start recording: " + error.message);
     }
   };
 
@@ -245,7 +269,9 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   // Handle audio ended
@@ -265,7 +291,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
@@ -275,52 +301,53 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     };
   }, [audioUrl]);
 
-
   const buttonStyle = {
-    padding: '12px 24px',
-    margin: '5px',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
+    padding: "12px 24px",
+    margin: "5px",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "16px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
   };
 
   const recordButtonStyle = {
     ...buttonStyle,
-    backgroundColor: isRecording ? '#ff4444' : '#4CAF50',
-    color: 'white',
+    backgroundColor: isRecording ? "#ff4444" : "#4CAF50",
+    color: "white",
   };
 
   const playButtonStyle = {
     ...buttonStyle,
-    backgroundColor: isPlaying ? '#ff4444' : '#2196F3',
-    color: 'white',
+    backgroundColor: isPlaying ? "#ff4444" : "#2196F3",
+    color: "white",
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '400px', margin: '0 auto' }}>
-      <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>
+    <div style={{ padding: "20px", maxWidth: "400px", margin: "0 auto" }}>
+      <h2 style={{ textAlign: "center", marginBottom: "20px" }}>
         Web Voice Recorder
       </h2>
 
       {(error || isConverting) && ( // Display conversion status or errors
-        <div style={{
-          color: isConverting ? '#2196F3' : '#ff4444',
-          backgroundColor: isConverting ? '#e6f3ff' : '#ffe6e6',
-          padding: '10px',
-          borderRadius: '5px',
-          marginBottom: '20px',
-          textAlign: 'center'
-        }}>
-          {error || 'Converting...'}
+        <div
+          style={{
+            color: isConverting ? "#2196F3" : "#ff4444",
+            backgroundColor: isConverting ? "#e6f3ff" : "#ffe6e6",
+            padding: "10px",
+            borderRadius: "5px",
+            marginBottom: "20px",
+            textAlign: "center",
+          }}
+        >
+          {error || "Converting..."}
         </div>
       )}
 
       {/* Recording section */}
-      <div style={{ marginBottom: '20px', textAlign: 'center' }}>
-        <div style={{ marginBottom: '10px', fontSize: '18px' }}>
+      <div style={{ marginBottom: "20px", textAlign: "center" }}>
+        <div style={{ marginBottom: "10px", fontSize: "18px" }}>
           Recording Time: {formatTime(recordingTime)}
         </div>
 
@@ -329,14 +356,14 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
           onClick={isRecording ? stopRecording : startRecording}
           disabled={!!error || isConverting || !ffmpegRef.current.loaded} // Disable if FFmpeg not loaded
         >
-          {isRecording ? '⏹ Stop Recording' : '🎤 Start Recording'}
+          {isRecording ? "⏹ Stop Recording" : "🎤 Start Recording"}
         </button>
       </div>
 
       {/* Playback section */}
       {audioUrl && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ marginBottom: '10px', fontSize: '18px' }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ marginBottom: "10px", fontSize: "18px" }}>
             Playback Time: {formatTime(playbackTime)}
           </div>
 
@@ -345,24 +372,28 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
             onClick={isPlaying ? stopPlayback : startPlayback}
             disabled={isConverting} // Disable playback during conversion
           >
-            {isPlaying ? '⏹ Stop Playing' : '▶ Play Recording'}
+            {isPlaying ? "⏹ Stop Playing" : "▶ Play Recording"}
           </button>
 
           <audio
             ref={audioRef}
             src={audioUrl}
             onEnded={handleAudioEnded}
-            style={{ display: 'none' }}
+            style={{ display: "none" }}
           />
 
-          <div style={{
-            marginTop: '15px',
-            fontSize: '12px',
-            color: '#666',
-            wordBreak: 'break-all'
-          }}>
-            <strong>File info:</strong><br/>
-            Type: {audioBlob?.type || 'Unknown'}<br/>
+          <div
+            style={{
+              marginTop: "15px",
+              fontSize: "12px",
+              color: "#666",
+              wordBreak: "break-all",
+            }}
+          >
+            <strong>File info:</strong>
+            <br />
+            Type: {audioBlob?.type || "Unknown"}
+            <br />
             Size: {audioBlob ? Math.round(audioBlob.size / 1024) : 0} KB
           </div>
         </div>
