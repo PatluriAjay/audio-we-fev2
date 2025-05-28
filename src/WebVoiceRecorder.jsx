@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FFmpeg } from "@ffmpeg/ffmpeg"; // Import FFmpeg
-import { fetchFile } from "@ffmpeg/util"; // Helper to fetch files for FFmpeg
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile } from "@ffmpeg/util";
 
 const WebVoiceRecorder = ({ onRecordingComplete }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -8,33 +8,33 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
-  const [audioUrl, setAudioUrl] = useState(""); // URL for the locally recorded audio
+  const [audioUrl, setAudioUrl] = useState("");
   const [error, setError] = useState("");
-  const [isConverting, setIsConverting] = useState(false); // New state for conversion status
+  const [isConverting, setIsConverting] = useState(false);
 
   const mediaRecorderRef = useRef(null);
-  const audioPlayerRef = useRef(null); // Unified ref for the single audio element
+  const audioPlayerRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const playbackTimerRef = useRef(null);
-  const ffmpegRef = useRef(new FFmpeg()); // Initialize FFmpeg instance
+  const ffmpegRef = useRef(new FFmpeg());
 
-  const [selectedRecording, setSelectedRecording] = useState(null); // State to track which fetched recording is selected
+  const [selectedRecording, setSelectedRecording] = useState(null);
   const [recordingsList, setRecordingsList] = useState([]);
+  const [recordingFormats, setRecordingFormats] = useState({}); // State to track format selection for each recording
 
-  // --- FFmpeg setup ---
+  // FFmpeg setup
   const loadFFmpeg = async () => {
-    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm"; // Use a CDN for core files
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm";
     try {
       if (!ffmpegRef.current.loaded) {
         setError("Loading audio converter...");
         await ffmpegRef.current.load({
           coreURL: `${baseURL}/ffmpeg-core.js`,
           wasmURL: `${baseURL}/ffmpeg-core.wasm`,
-          // For web workers: workerURL: `${baseURL}/ffmpeg-core.worker.js`,
         });
-        setError(""); // Clear error once loaded
+        setError("");
         console.log("FFmpeg loaded successfully");
       }
     } catch (err) {
@@ -43,7 +43,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     }
   };
 
-  // --- Fetch recordings from backend ---
+  // Fetch recordings from backend
   const fetchRecordings = async () => {
     try {
       const response = await fetch("http://localhost:5000/api/recordings");
@@ -59,33 +59,78 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     }
   };
 
-  // --- Initial load and cleanup ---
+  // Add this function at the top of your component
+const normalizeServerUrl = (url) => {
+  if (!url) return null;
+  
+  // Replace 10.0.2.2 with localhost if accessing from browser
+  if (window.location.hostname === 'localhost') {
+    return url.replace('10.0.2.2', 'localhost');
+  }
+  
+  // Replace localhost with 10.0.2.2 if accessing from Android emulator
+  if (window.location.hostname === '10.0.2.2') {
+    return url.replace('localhost', '10.0.2.2');
+  }
+  
+  return url;
+};
+
+  // Get the appropriate URL based on selected format for a specific recording
+const getRecordingUrl = (recording) => {
+  const selectedFormat = recordingFormats[recording._id] || "mp3";
+  let url;
+  
+  switch (selectedFormat) {
+    case "mp3":
+      url = recording.mp3?.url;
+      break;
+    case "mp4":
+      url = recording.mp4?.url;
+      break;
+    default:
+      url = recording.mp3?.url;
+  }
+  
+  return normalizeServerUrl(url);
+};
+
+  // Get display name for recording
+  const getRecordingDisplayName = (recording) => {
+    return recording.originalFilename || recording.filename;
+  };
+
+  // Get file info for selected format for a specific recording
+  const getRecordingInfo = (recording) => {
+    const selectedFormat = recordingFormats[recording._id] || "mp3"; // Default to mp3
+    switch (selectedFormat) {
+      case "mp3":
+        return recording.mp3 || {};
+      case "mp4":
+        return recording.mp4 || {};
+      default:
+        return recording.mp3 || {}; // Fallback to mp3
+    }
+  };
+
+  // Initial load and cleanup
   useEffect(() => {
-    loadFFmpeg(); // Load FFmpeg when the component mounts
-    fetchRecordings(); // Fetch existing recordings on mount
+    loadFFmpeg();
+    fetchRecordings();
 
     return () => {
-      // Clear timers
       if (timerRef.current) clearInterval(timerRef.current);
       if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
 
-      // Stop media stream tracks
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
 
-      // Revoke object URL for local recording if it exists
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
-      // Note: FFmpeg instance can persist or be terminated based on app needs.
-      // For this component, we'll let it persist across renders.
-      // If you need to explicitly terminate it on unmount, uncomment:
-      // if (ffmpegRef.current && ffmpegRef.current.loaded) {
-      //   ffmpegRef.current.terminate();
-      // }
     };
-  }, [audioUrl]); // Depend on audioUrl for cleanup of that specific URL
+  }, [audioUrl]);
 
   // Check browser support
   const checkSupport = () => {
@@ -102,14 +147,14 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     return true;
   };
 
-  // Get supported MIME type for initial recording (prioritize Opus if possible)
+  // Get supported MIME type for initial recording
   const getSupportedMimeType = () => {
     const possibleTypes = [
-      "audio/webm;codecs=opus", // WebM with Opus (ideal for direct recording)
-      "audio/mp4;codecs=mp4a.40.2", // AAC in MP4
-      "audio/webm", // WebM fallback
-      "audio/mp4", // MP4 fallback
-      "audio/aac", // Raw AAC
+      "audio/webm;codecs=opus",
+      "audio/mp4;codecs=mp4a.40.2",
+      "audio/webm",
+      "audio/mp4",
+      "audio/aac",
     ];
 
     for (const mimeType of possibleTypes) {
@@ -122,7 +167,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     console.warn(
       "No preferred MIME type supported for initial recording, using default."
     );
-    return ""; // Let browser choose (often WebM or MP4)
+    return "";
   };
 
   // Start recording
@@ -133,27 +178,24 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
       return;
     }
 
-    // Stop any current playback before starting a new recording
     stopPlayback();
-    setSelectedRecording(null); // Clear selected fetched recording
+    setSelectedRecording(null);
 
     try {
       setError("");
 
-      // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 48000, // Common for Opus, better quality
-          channelCount: 1, // Mono for smaller file size
+          sampleRate: 48000,
+          channelCount: 1,
         },
       });
 
       streamRef.current = stream;
       chunksRef.current = [];
 
-      // Configure MediaRecorder with compatible settings
       const mimeType = getSupportedMimeType();
       const options = mimeType ? { mimeType } : {};
 
@@ -169,18 +211,16 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
         const initialBlob = new Blob(chunksRef.current, {
           type: mediaRecorderRef.current.mimeType,
         });
-        setAudioBlob(initialBlob); // Set initial blob for info display
+        setAudioBlob(initialBlob);
 
-        // Stop all tracks from the recording stream
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop());
         }
 
-        setIsConverting(true); // Indicate conversion is starting
+        setIsConverting(true);
         setError("Converting audio to MP4 (AAC)...");
 
         try {
-          // Write the initial recording to FFmpeg's virtual file system
           await ffmpegRef.current.writeFile(
             "input.file",
             await fetchFile(initialBlob)
@@ -190,37 +230,33 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
             "-i",
             "input.file",
             "-c:a",
-            "aac", // Use AAC codec
+            "aac",
             "-b:a",
-            "128k", // Higher bitrate for better quality
+            "128k",
             "-movflags",
-            "+faststart", // Optimize for web playback
-            "output.m4a", // M4A output
+            "+faststart",
+            "output.m4a",
           ]);
 
-          // Read the converted file
           const data = await ffmpegRef.current.readFile("output.m4a");
           const m4aBlob = new Blob([data.buffer], { type: "audio/mp4" });
-          setAudioBlob(m4aBlob); // Update state with the M4A blob
+          setAudioBlob(m4aBlob);
 
-          // Create URL for playback of the local recording
           const url = URL.createObjectURL(m4aBlob);
           setAudioUrl(url);
 
-          // Call callback with the blob for upload
           if (onRecordingComplete) {
             onRecordingComplete(m4aBlob, url);
           }
-          setError(""); // Clear conversion message
+          setError("");
         } catch (convertError) {
           console.error("Failed to convert to M4A:", convertError);
           setError("Failed to convert audio: " + convertError.message);
-          // Revoke the initial blob URL if conversion fails
           if (audioUrl) URL.revokeObjectURL(audioUrl);
           setAudioUrl("");
           setAudioBlob(null);
         } finally {
-          setIsConverting(false); // Conversion finished
+          setIsConverting(false);
         }
       };
 
@@ -229,12 +265,10 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
         setError("Recording failed: " + event.error.message);
       };
 
-      // Start recording
-      mediaRecorderRef.current.start(1000); // Collect data every second
+      mediaRecorderRef.current.start(1000);
       setIsRecording(true);
       setRecordingTime(0);
 
-      // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
@@ -262,43 +296,46 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     }
   };
 
-  // Start playback (unified for local and fetched audio)
-  const startPlayback = () => {
-    const urlToPlay = selectedRecording ? selectedRecording.url : audioUrl;
+  // Update the startPlayback function
+const startPlayback = () => {
+  const urlToPlay = selectedRecording
+    ? getRecordingUrl(selectedRecording)
+    : audioUrl;
 
-    if (audioPlayerRef.current && urlToPlay) {
-      // If already playing, stop current playback first
-      if (isPlaying) {
-        stopPlayback();
-      }
-
-      audioPlayerRef.current.src = urlToPlay;
-      audioPlayerRef.current.crossOrigin = "anonymous"; // Important for CORS if hosted separately
-      audioPlayerRef.current.load(); // Load the new source
-      audioPlayerRef.current
-        .play()
-        .then(() => {
-          setIsPlaying(true);
-          setPlaybackTime(0);
-          if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
-          playbackTimerRef.current = setInterval(() => {
-            if (audioPlayerRef.current) {
-              setPlaybackTime(Math.floor(audioPlayerRef.current.currentTime));
-            }
-          }, 1000);
-        })
-        .catch((error) => {
-          console.error("Error playing audio:", error);
-          setError("Failed to play audio: " + error.message);
-          setIsPlaying(false); // Reset playing state on error
-          if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
-        });
-    } else {
-      setError("");
+  if (audioPlayerRef.current && urlToPlay) {
+    if (isPlaying) {
+      stopPlayback();
     }
-  };
 
-  // Stop playback (unified)
+    console.log('Playing URL:', urlToPlay); // Add this for debugging
+
+    audioPlayerRef.current.src = urlToPlay;
+    audioPlayerRef.current.crossOrigin = "anonymous";
+    audioPlayerRef.current.load();
+    audioPlayerRef.current
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        setPlaybackTime(0);
+        if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
+        playbackTimerRef.current = setInterval(() => {
+          if (audioPlayerRef.current) {
+            setPlaybackTime(Math.floor(audioPlayerRef.current.currentTime));
+          }
+        }, 1000);
+      })
+      .catch((error) => {
+        console.error("Error playing audio:", error);
+        setError(`Failed to play audio: ${error.message}. URL: ${urlToPlay}`);
+        setIsPlaying(false);
+        if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
+      });
+  } else {
+    // setError(`No audio URL available for selected format. URL: ${urlToPlay}`);
+  }
+};
+
+  // Stop playback
   const stopPlayback = () => {
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
@@ -306,7 +343,6 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     }
     setIsPlaying(false);
     setPlaybackTime(0);
-    // When stopping, deselect any currently playing fetched recording
     setSelectedRecording(null);
 
     if (playbackTimerRef.current) {
@@ -324,7 +360,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
       .padStart(2, "0")}`;
   };
 
-  // Handle audio ended event (for the main audio player)
+  // Handle audio ended event
   const handleAudioEnded = () => {
     setIsPlaying(false);
     setPlaybackTime(0);
@@ -332,7 +368,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
       clearInterval(playbackTimerRef.current);
       playbackTimerRef.current = null;
     }
-    setSelectedRecording(null); // Clear selection when playback ends
+    setSelectedRecording(null);
   };
 
   const buttonStyle = {
@@ -352,7 +388,6 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     color: "white",
   };
 
-  // Dynamic play button style for consistency
   const getPlayButtonStyle = (isCurrentPlayback = false) => ({
     ...buttonStyle,
     backgroundColor: isPlaying && isCurrentPlayback ? "#ff4444" : "#2196F3",
@@ -367,14 +402,12 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
       return;
     }
 
-    setError(""); // Clear previous errors
+    setError("");
     const formData = new FormData();
-    // Use a more descriptive filename
-    formData.append(
-      "audio",
-      audioBlob,
-      `recording_${Date.now()}.${audioBlob.type.split("/")[1] || "m4a"}`
-    );
+    const filename = `recording_${Date.now()}.${
+      audioBlob.type.split("/")[1] || "m4a"
+    }`;
+    formData.append("audio", audioBlob, filename);
 
     try {
       const response = await fetch(
@@ -389,9 +422,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
         const data = await response.json();
         console.log("Server upload successful:", data);
         setError("");
-        // Fetch updated recordings list after successful upload
         fetchRecordings();
-        // Clear local recording state after submission
         setAudioBlob(null);
         if (audioUrl) {
           URL.revokeObjectURL(audioUrl);
@@ -408,17 +439,34 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
     }
   };
 
+  // Handle format change for a specific recording
+  const handleFormatChange = (recordingId, newFormat) => {
+    setRecordingFormats((prev) => ({
+      ...prev,
+      [recordingId]: newFormat,
+    }));
+
+    // If this recording is currently playing, stop it
+    if (selectedRecording?._id === recordingId && isPlaying) {
+      stopPlayback();
+    }
+  };
+
   // Play fetched recording from the list
   const playRecording = (recording) => {
-    // If this specific fetched recording is already playing, stop it.
     if (selectedRecording?._id === recording._id && isPlaying) {
-      stopPlayback(); // This will also clear selectedRecording
+      stopPlayback();
       return;
     }
 
-    // Otherwise, set this as the selected recording and start playback
     setSelectedRecording(recording);
-    startPlayback(); // Call unified startPlayback
+    startPlayback();
+  };
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (!bytes) return "0 KB";
+    return (bytes / 1024).toFixed(2) + " KB";
   };
 
   return (
@@ -471,15 +519,15 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
           </button>
         </div>
 
-        {/* Hidden Audio Player - Always present in DOM */}
+        {/* Hidden Audio Player */}
         <audio
           ref={audioPlayerRef}
           onEnded={handleAudioEnded}
-          style={{ display: "none" }} // Keep it hidden
+          style={{ display: "none" }}
           crossOrigin="anonymous"
         />
 
-        {/* Local Playback and Submit Section (only appears after a local recording is made) */}
+        {/* Local Playback and Submit Section */}
         {audioUrl && (
           <div
             style={{
@@ -499,11 +547,11 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
             </div>
 
             <button
-              style={getPlayButtonStyle(isPlaying && !selectedRecording)} // Apply style if local audio is playing
+              style={getPlayButtonStyle(isPlaying && !selectedRecording)}
               onClick={
                 isPlaying && !selectedRecording ? stopPlayback : startPlayback
               }
-              disabled={isConverting} // Disable if conversion is in progress
+              disabled={isConverting}
             >
               {isPlaying && !selectedRecording
                 ? "⏹ Stop Playing"
@@ -522,7 +570,7 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
               <br />
               Type: {audioBlob?.type || "Unknown"}
               <br />
-              Size: {audioBlob ? (audioBlob.size / 1024).toFixed(2) : 0} KB
+              Size: {formatFileSize(audioBlob?.size)}
             </div>
 
             <button
@@ -546,7 +594,6 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
         style={{
           marginTop: "30px",
           padding: "20px",
-        
           margin: "0 auto",
           border: "1px solid #ccc",
           borderRadius: "10px",
@@ -558,64 +605,145 @@ const WebVoiceRecorder = ({ onRecordingComplete }) => {
         >
           Saved Audio Files
         </h3>
+
         {recordingsList.length > 0 ? (
-          <div
-            style={{
-              maxHeight: "300px",
-              overflowY: "auto",
-              border: "1px solid #eee",
-              borderRadius: "5px",
-            }}
-          >
-            {recordingsList.map((recording) => (
-              <div
-                key={recording._id}
-                style={{
-                  padding: "10px",
-                  margin: "5px",
-                  backgroundColor:
-                    selectedRecording?._id === recording._id
-                      ? "#e6f3ff"
-                      : "#fcfcfc",
-                  border: `1px solid ${
-                    selectedRecording?._id === recording._id
-                      ? "#a0d9ff"
-                      : "#eee"
-                  }`,
-                  borderRadius: "5px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                }}
-              >
-                <div>
+          <div>
+            {recordingsList.map((recording) => {
+              const selectedFormat = recordingFormats[recording._id] || "mp3";
+              const recordingInfo = getRecordingInfo(recording);
+              const isAvailable = !!getRecordingUrl(recording);
+
+              return (
+                <div
+                  key={recording._id}
+                  style={{
+                    padding: "10px",
+                    margin: "5px",
+                    backgroundColor:
+                      selectedRecording?._id === recording._id
+                        ? "#e6f3ff"
+                        : "#fcfcfc",
+                    border: `1px solid ${
+                      selectedRecording?._id === recording._id
+                        ? "#a0d9ff"
+                        : "#eee"
+                    }`,
+                    borderRadius: "5px",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    opacity: isAvailable ? 1 : 0.6,
+                  }}
+                >
+                  {/* Main content row */}
                   <div
                     style={{
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                      color: "#333",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "8px",
                     }}
                   >
-                    {recording.filename}
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: "bold",
+                          color: "#333",
+                        }}
+                      >
+                        {getRecordingDisplayName(recording)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#666",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {new Date(recording.uploadDate).toLocaleString()}
+                      </div>
+                    </div>
+                    <button
+                      style={{
+                        ...getPlayButtonStyle(
+                          selectedRecording?._id === recording._id
+                        ),
+                        opacity: isAvailable ? 1 : 0.5,
+                      }}
+                      onClick={() => playRecording(recording)}
+                      disabled={isConverting || !isAvailable}
+                      title={
+                        !isAvailable
+                          ? `${selectedFormat.toUpperCase()} format not available`
+                          : ""
+                      }
+                    >
+                      {selectedRecording?._id === recording._id && isPlaying
+                        ? "⏹ Stop"
+                        : "▶ Play"}
+                    </button>
                   </div>
-                  <div style={{ fontSize: "12px", color: "#666" }}>
-                    {new Date(recording.uploadDate).toLocaleString()}
+
+                  {/* Format selection and info row */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      borderTop: "1px solid #eee",
+                      paddingTop: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "12px",
+                          color: "#555",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        Format:
+                      </label>
+                      <select
+                        value={selectedFormat}
+                        onChange={(e) =>
+                          handleFormatChange(recording._id, e.target.value)
+                        }
+                        style={{
+                          padding: "3px 6px",
+                          borderRadius: "4px",
+                          border: "1px solid #ccc",
+                          fontSize: "12px",
+                          backgroundColor: "white",
+                        }}
+                      >
+                        <option value="mp3">MP3</option>
+                        <option value="mp4">MP4</option>
+                      </select>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#888",
+                        textAlign: "right",
+                      }}
+                    >
+                      {recordingInfo.mimetype || "N/A"} |{" "}
+                      {formatFileSize(recordingInfo.size)}
+                      {!isAvailable && " (Not available)"}
+                    </div>
                   </div>
                 </div>
-                <button
-                  style={getPlayButtonStyle(
-                    selectedRecording?._id === recording._id
-                  )}
-                  onClick={() => playRecording(recording)}
-                  disabled={isConverting} // Disable while FFmpeg is busy
-                >
-                  {selectedRecording?._id === recording._id && isPlaying
-                    ? "⏹ Stop"
-                    : "▶ Play"}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p
